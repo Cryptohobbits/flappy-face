@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <title>Flappy Face</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='30' cy='34' r='24' fill='%233ec1d3' stroke='%231d4e5c' stroke-width='4'/%3E%3Ccircle cx='38' cy='28' r='8' fill='%23fff' stroke='%231d4e5c' stroke-width='3'/%3E%3Ccircle cx='40' cy='28' r='4' fill='%231a1a2e'/%3E%3Cpath d='M50 34 L63 38 L50 43 Z' fill='%23ffae34' stroke='%231d4e5c' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div id="game" aria-label="Flappy Face game">
@@ -63,6 +63,7 @@
     <canvas id="crop-cv"></canvas>
     <div class="crop-top">
       <h2>Position your face</h2>
+      <p class="hint-main">Line up your eyes and chin</p>
       <p>Drag to move · pinch or scroll to zoom</p>
     </div>
     <div class="crop-bottom">
@@ -90,6 +91,6 @@
   <input type="file" id="file-selfie" accept="image/*" capture="user" hidden>
   <input type="file" id="file-choose" accept="image/*" hidden>
 </div>
-<script src="game.js"></script>
+<script src="game.js?v=2"></script>
 </body>
 </html>

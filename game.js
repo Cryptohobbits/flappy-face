@@ -16,7 +16,9 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
 };
-const KEY_BEST = 'flappyFace.best', KEY_FACE = 'flappyFace.face', KEY_MUTE = 'flappyFace.muted';
+const KEY_BEST = 'flappyFace.best', KEY_MUTE = 'flappyFace.muted';
+const KEY_FACE = 'flappyFace.faceShape';   // v2: face-shaped (egg) PNG, transparent outside
+const KEY_FACE_OLD = 'flappyFace.face';    // v1: circular PNG (still rendered if present)
 
 // ---------- tuning (logical px & seconds; play field is >= 640 tall) ----------
 const BASE_H = 640, MIN_W = 270, MAX_ASPECT = 0.66, GROUND = 100;
@@ -36,7 +38,18 @@ let state = 'start';          // start | play | dying | over | paused
 let score = 0, best = parseInt(store.get(KEY_BEST) || '0', 10) || 0, newBest = false;
 let time = 0, overReadyAt = 0, shake = 0, flash = 0;
 let muted = store.get(KEY_MUTE) === '1';
-let faceImg = null;
+let faceImg = null, faceKind = 'shape'; // 'shape' (egg) or 'circle' (legacy)
+
+// Face/egg outline: taller than wide (w:h = 0.78), broader forehead, narrower chin.
+const FACE_RATIO = 0.78;
+function facePath(g, cx, cy, hw, hh) {
+  g.moveTo(cx, cy - hh);
+  g.bezierCurveTo(cx + hw * 0.6, cy - hh, cx + hw, cy - hh * 0.6, cx + hw, cy - hh * 0.1);
+  g.bezierCurveTo(cx + hw, cy + hh * 0.45, cx + hw * 0.5, cy + hh, cx, cy + hh);
+  g.bezierCurveTo(cx - hw * 0.5, cy + hh, cx - hw, cy + hh * 0.45, cx - hw, cy - hh * 0.1);
+  g.bezierCurveTo(cx - hw, cy - hh * 0.6, cx - hw * 0.6, cy - hh, cx, cy - hh);
+  g.closePath();
+}
 let layers = [], groundLayer = null, skyGrad = null;
 
 // ---------- sound (Web Audio, created on first user gesture) ----------
@@ -279,7 +292,17 @@ function drawBird() {
   ctx.beginPath(); ctx.ellipse(4, 10, 14, 9, 0, 0, Math.PI * 2); ctx.fillStyle = '#fff1c1'; ctx.fill();
   ctx.restore();
   ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 2;
-  if (faceImg) {
+  if (faceImg && faceKind === 'shape') {
+    const fx = 2.5, fy = -1, hh = 16.5, hw = hh * FACE_RATIO;
+    ctx.save(); ctx.beginPath(); facePath(ctx, fx, fy, hw, hh); ctx.clip();
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.drawImage(faceImg, fx - hw, fy - hh, hw * 2, hh * 2);
+    ctx.restore();
+    ctx.beginPath(); facePath(ctx, fx, fy, hw + 1.1, hh + 1.1); ctx.lineWidth = 2.4; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); facePath(ctx, fx, fy, hw + 2.4, hh + 2.4); ctx.lineWidth = 1.4; ctx.strokeStyle = OL; ctx.stroke();
+    ctx.lineWidth = 2; ctx.strokeStyle = OL;
+    drawBeak(fx + hw + 0.5, 3);
+  } else if (faceImg) {
     const fx = 2, fy = -1, fr = 15.5;
     ctx.save(); ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.clip();
     ctx.fillStyle = '#fff'; ctx.fill();
@@ -477,12 +500,13 @@ let toastT = 0;
 function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2200); }
 
 // ---------- face photo: pick -> crop -> save (all local) ----------
-const MAX_SRC = 1600, FACE_OUT = 160;
-function setFace(img) { faceImg = img; updateStartUI(); }
+const MAX_SRC = 1600, FACE_OUT_W = 128, FACE_OUT_H = 164;
+function setFace(img, kind = 'shape') { faceImg = img; faceKind = kind; updateStartUI(); }
 function loadStoredFace() {
-  const d = store.get(KEY_FACE);
+  let key = KEY_FACE, kind = 'shape', d = store.get(KEY_FACE);
+  if (!d) { key = KEY_FACE_OLD; kind = 'circle'; d = store.get(KEY_FACE_OLD); } // legacy circular face
   if (!d || d.indexOf('data:image/') !== 0) return;
-  const img = new Image(); img.onload = () => setFace(img); img.onerror = () => store.del(KEY_FACE); img.src = d;
+  const img = new Image(); img.onload = () => setFace(img, kind); img.onerror = () => store.del(key); img.src = d;
 }
 // Decode respecting EXIF orientation, then downscale big camera images.
 async function decodeFile(file) {
@@ -519,25 +543,25 @@ $('selfie-btn').addEventListener('click', e => { e.stopPropagation(); e.currentT
 $('choose-btn').addEventListener('click', e => { e.stopPropagation(); e.currentTarget.blur(); sfx.unlock(); chooseIn.click(); });
 selfieIn.addEventListener('change', () => onFile(selfieIn));
 chooseIn.addEventListener('change', () => onFile(chooseIn));
-$('reset-face').addEventListener('click', e => { e.stopPropagation(); e.currentTarget.blur(); store.del(KEY_FACE); setFace(null); toast('Face reset'); });
+$('reset-face').addEventListener('click', e => { e.stopPropagation(); e.currentTarget.blur(); store.del(KEY_FACE); store.del(KEY_FACE_OLD); setFace(null); toast('Face reset'); });
 
 const crop = (() => {
   const c = $('crop-cv'), g = c.getContext('2d'), zoomIn = $('zoom');
-  const S = { open: false, img: null, rot: 0, z: 1, ox: 0, oy: 0, cw: 0, ch: 0, cx: 0, cy: 0, R: 100, dpr: 1 };
+  const S = { open: false, img: null, rot: 0, z: 1, ox: 0, oy: 0, cw: 0, ch: 0, cx: 0, cy: 0, hw: 78, hh: 100, dpr: 1 };
   const ptrs = new Map(); let pinch = null;
   const dims = () => (S.rot % 2) ? [S.img.height, S.img.width] : [S.img.width, S.img.height];
-  const baseScale = () => { const [w, h] = dims(); return (2 * S.R) / Math.min(w, h); };
+  const baseScale = () => { const [w, h] = dims(); return Math.max((2 * S.hw) / w, (2 * S.hh) / h); }; // cover the mask
   const sc = () => baseScale() * S.z;
   function clampPos() {
     const [w, h] = dims(), s = sc();
-    const mx = Math.max(0, w * s / 2 - S.R), my = Math.max(0, h * s / 2 - S.R);
+    const mx = Math.max(0, w * s / 2 - S.hw), my = Math.max(0, h * s / 2 - S.hh);
     S.ox = clamp(S.ox, -mx, mx); S.oy = clamp(S.oy, -my, my);
   }
   function layout() {
     const r = c.getBoundingClientRect();
     S.cw = r.width || bw; S.ch = r.height || bh; S.dpr = Math.min(window.devicePixelRatio || 1, 3);
     c.width = Math.round(S.cw * S.dpr); c.height = Math.round(S.ch * S.dpr);
-    S.R = Math.min(S.cw * 0.4, S.ch * 0.26, 180);
+    S.hh = Math.min(S.ch * 0.29, (S.cw * 0.4) / FACE_RATIO, 230); S.hw = S.hh * FACE_RATIO;
     S.cx = S.cw / 2; S.cy = S.ch * 0.44;
     clampPos(); draw();
   }
@@ -548,10 +572,23 @@ const crop = (() => {
     g.save(); g.translate(S.cx + S.ox, S.cy + S.oy); g.rotate(S.rot * Math.PI / 2); const s = sc(); g.scale(s, s);
     g.imageSmoothingQuality = 'high'; g.drawImage(S.img, -S.img.width / 2, -S.img.height / 2); g.restore();
     // dim outside the circle
-    g.beginPath(); g.rect(0, 0, S.cw, S.ch); g.arc(S.cx, S.cy, S.R, 0, Math.PI * 2, true);
+    const { cx, cy, hw, hh } = S;
+    g.beginPath(); g.rect(0, 0, S.cw, S.ch); facePath(g, cx, cy, hw, hh);
     g.fillStyle = 'rgba(8,24,30,.72)'; g.fill('evenodd');
-    g.beginPath(); g.arc(S.cx, S.cy, S.R, 0, Math.PI * 2); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
-    g.setLineDash([6, 8]); g.beginPath(); g.arc(S.cx, S.cy, S.R + 8, 0, Math.PI * 2); g.lineWidth = 2; g.strokeStyle = 'rgba(255,216,77,.8)'; g.stroke(); g.setLineDash([]);
+    // alignment guides (display only — never drawn into the saved face)
+    const eyeY = cy - hh * 0.12, ex = hw * 0.4, er = Math.max(6, hw * 0.13);
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 1.5; g.lineCap = 'round';
+    g.setLineDash([4, 6]); g.beginPath(); g.moveTo(cx - hw * 0.92, eyeY); g.lineTo(cx + hw * 0.92, eyeY); g.stroke(); g.setLineDash([]);
+    g.lineWidth = 2;
+    for (const sx of [-1, 1]) { g.beginPath(); g.ellipse(cx + sx * ex, eyeY, er, er * 0.62, 0, 0, Math.PI * 2); g.stroke(); }
+    const chinY = cy + hh * 0.9;
+    g.beginPath(); g.moveTo(cx - hw * 0.2, chinY - hh * 0.035); g.quadraticCurveTo(cx, chinY + hh * 0.035, cx + hw * 0.2, chinY - hh * 0.035); g.stroke();
+    g.beginPath(); g.moveTo(cx, chinY - hh * 0.07); g.lineTo(cx, chinY - hh * 0.005); g.stroke();
+    g.font = '700 11px ' + FONT; g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.55)';
+    g.fillText('eyes', cx, eyeY - er - 5); g.fillText('chin', cx, chinY - hh * 0.09);
+    g.restore();
+    g.beginPath(); facePath(g, cx, cy, hw, hh); g.lineWidth = 3; g.strokeStyle = '#fff'; g.stroke();
+    g.setLineDash([6, 8]); g.beginPath(); facePath(g, cx, cy, hw + 9, hh + 9); g.lineWidth = 2; g.strokeStyle = 'rgba(255,216,77,.8)'; g.stroke(); g.setLineDash([]);
   }
   function zoomAt(px, py, nz) {
     nz = clamp(nz, 1, 5); const s0 = sc(); S.z = nz; const k = sc() / s0;
@@ -585,15 +622,15 @@ const crop = (() => {
   $('rotate-btn').addEventListener('click', () => { S.rot = (S.rot + 1) % 4; const t = S.ox; S.ox = -S.oy; S.oy = t; clampPos(); draw(); });
   $('crop-cancel').addEventListener('click', () => close());
   $('crop-use').addEventListener('click', () => {
-    const out = document.createElement('canvas'); out.width = out.height = FACE_OUT;
-    const o = out.getContext('2d'), f = FACE_OUT / (2 * S.R);
-    o.beginPath(); o.arc(FACE_OUT / 2, FACE_OUT / 2, FACE_OUT / 2, 0, Math.PI * 2); o.clip();
-    o.translate(FACE_OUT / 2 + S.ox * f, FACE_OUT / 2 + S.oy * f); o.rotate(S.rot * Math.PI / 2);
+    const out = document.createElement('canvas'); out.width = FACE_OUT_W; out.height = FACE_OUT_H;
+    const o = out.getContext('2d'), f = FACE_OUT_H / (2 * S.hh), hwO = S.hw * f, hhO = FACE_OUT_H / 2;
+    o.beginPath(); facePath(o, FACE_OUT_W / 2, hhO, hwO, hhO); o.clip();
+    o.translate(FACE_OUT_W / 2 + S.ox * f, hhO + S.oy * f); o.rotate(S.rot * Math.PI / 2);
     const s = sc() * f; o.scale(s, s); o.imageSmoothingQuality = 'high';
     o.drawImage(S.img, -S.img.width / 2, -S.img.height / 2);
     let saved = store.set(KEY_FACE, out.toDataURL('image/png'));
     if (!saved) saved = store.set(KEY_FACE, out.toDataURL('image/webp', 0.85));
-    setFace(out); close();
+    store.del(KEY_FACE_OLD); setFace(out, 'shape'); close();
     toast(saved ? 'Looking good! Face saved on this device' : 'Face set (could not save on this device)');
   });
   function openWith(img) {
@@ -608,7 +645,7 @@ const crop = (() => {
 window.FF = {
   get state() { return state; }, get score() { return score; }, get best() { return best; },
   get bird() { return { ...bird }; }, get pipes() { return pipes.map(p => ({ ...p })); },
-  get hasFace() { return !!faceImg; }, get crop() { return crop._S; },
+  get hasFace() { return !!faceImg; }, get faceKind() { return faceKind; }, get crop() { return crop._S; },
   get groundY() { return groundY; }, get W() { return W; }, get H() { return H; }, PIPE_W, BIRD_R,
   action
 };
