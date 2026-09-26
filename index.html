@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#5cc3e6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flappy Face">
+<meta name="description" content="Flappy Face – tap to flap! Put your own face on the bird. A tiny original arcade game.">
+<meta property="og:title" content="Flappy Face">
+<meta property="og:description" content="Tap to flap. Put your face on the bird and see how far you can fly!">
+<meta property="og:type" content="website">
+<title>Flappy Face</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='30' cy='34' r='24' fill='%233ec1d3' stroke='%231d4e5c' stroke-width='4'/%3E%3Ccircle cx='38' cy='28' r='8' fill='%23fff' stroke='%231d4e5c' stroke-width='3'/%3E%3Ccircle cx='40' cy='28' r='4' fill='%231a1a2e'/%3E%3Cpath d='M50 34 L63 38 L50 43 Z' fill='%23ffae34' stroke='%231d4e5c' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game" aria-label="Flappy Face game">
+  <canvas id="cv" aria-label="Game canvas: tap, click or press Space to flap"></canvas>
+
+  <!-- Start screen -->
+  <div id="start" class="overlay">
+    <h1 class="title"><span class="t1">Flappy</span><span class="t2">Face</span></h1>
+    <p class="tap pulse">Tap to flap</p>
+    <p class="best-line" id="best-start"></p>
+    <div class="controls no-tap">
+      <div class="btn-row">
+        <button class="btn" id="selfie-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.6" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>Take selfie</button>
+        <button class="btn" id="choose-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M5 17l5-5 4 4 2-2 3 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="15.5" cy="9.5" r="1.6" fill="currentColor"/></svg>Choose photo</button>
+      </div>
+      <button class="btn small ghost" id="reset-face" type="button" hidden>Reset face</button>
+      <p class="note">🔒 Your photo stays on your device.</p>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="over" class="overlay hidden">
+    <h2 class="title small-title">Game Over</h2>
+    <div class="card">
+      <div class="medal" id="medal" hidden></div>
+      <div class="stats">
+        <div><span class="lbl">Score</span><span class="val" id="score-val">0</span></div>
+        <div><span class="lbl">Best</span><span class="val" id="best-val">0</span></div>
+      </div>
+      <div class="newbest" id="newbest" hidden>New best!</div>
+    </div>
+    <p class="tap pulse restart">Tap to restart</p>
+    <div class="controls no-tap">
+      <button class="btn small ghost" id="menu-btn" type="button">Menu / change face</button>
+    </div>
+  </div>
+
+  <!-- Paused -->
+  <div id="paused" class="overlay hidden">
+    <h2 class="title small-title">Paused</h2>
+    <p class="tap pulse">Tap to resume</p>
+  </div>
+
+  <!-- Crop screen -->
+  <div id="crop" class="overlay crop hidden no-tap" role="dialog" aria-label="Position your face">
+    <canvas id="crop-cv"></canvas>
+    <div class="crop-top">
+      <h2>Position your face</h2>
+      <p>Drag to move · pinch or scroll to zoom</p>
+    </div>
+    <div class="crop-bottom">
+      <div class="zoom-row">
+        <span class="zi" aria-hidden="true">−</span>
+        <input type="range" id="zoom" min="1" max="5" step="0.01" value="1" aria-label="Zoom">
+        <span class="zi" aria-hidden="true">+</span>
+        <button class="btn icon" id="rotate-btn" type="button" aria-label="Rotate 90 degrees" title="Rotate"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="btn-row">
+        <button class="btn ghost" id="crop-cancel" type="button">Cancel</button>
+        <button class="btn primary" id="crop-use" type="button">Use this</button>
+      </div>
+      <p class="note light">🔒 Nothing is uploaded — your photo stays on your device.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <button id="mute" class="no-tap" type="button" aria-label="Mute sound" aria-pressed="false">
+    <svg id="ico-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    <svg id="ico-off" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16.5 9.5l5 5M21.5 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+  </button>
+
+  <input type="file" id="file-selfie" accept="image/*" capture="user" hidden>
+  <input type="file" id="file-choose" accept="image/*" hidden>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
